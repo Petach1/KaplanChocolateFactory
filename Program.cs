@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
@@ -34,20 +35,24 @@ namespace KaplanChocolateFactory
                     Console.WriteLine("Volitelné čokolády:");
                     foreach(var chocolateType in chocolateTypes)
                     {
-                        Console.WriteLine($"{chocolateType.Key}. {chocolateType.Value.Name}");
+                        Console.WriteLine($"{chocolateType.Key} ");
                     }
-
-                    Console.WriteLine("Zadej ID čokolády k výrobě: ");
-                    int ChocolateChoiceID = int.Parse(Console.ReadLine());
-                    if (chocolateTypes.ContainsKey(ChocolateChoiceID))
+                    while (true)
                     {
-                        factory.MakeChocolate(ChocolateChoiceID);
+                        Console.WriteLine("Zadej jméno čokolády k výrobě: ");
+                        string ChocolateChoiceID = Console.ReadLine();
+                        if (chocolateTypes.ContainsKey(ChocolateChoiceID))
+                        {
+                            factory.MakeChocolate(ChocolateChoiceID);
+                            
+                        }
+                        else
+                        {
+                            Console.WriteLine("Neplatny jméno čokolády.");
+                        }
                     }
-                    else
-                    {
-                        Console.WriteLine("Neplatny id čokolády.");
-                    }
-                    break;
+                    
+                    
                     
                 case "2":
                     // Restock ingredients
@@ -56,6 +61,9 @@ namespace KaplanChocolateFactory
                     // Eat chocolate
                     break;
                 case "4":
+                    //Ukaž vyrobené čokolády
+                    break;
+                case "5":
                     Environment.Exit(0);
                     break;
                 default:
@@ -77,28 +85,55 @@ namespace KaplanChocolateFactory
 
         class ChocolateFactory
         {
-            public Dictionary<int, ChocolateIngredientsInfo> Ingredients { get; set; }
-            public Dictionary<int, ChocolateTypeInfo> ChocolateTypes { get; set; }
+            public Dictionary<string, ChocolateIngredientsInfo> Ingredients { get; set; }
+            public Dictionary<string, ChocolateTypeInfo> ChocolateTypes { get; set; }
 
             public Dictionary<string, int> ProducedChocolates = new Dictionary<string, int>();
 
-            public Chocolate MakeChocolate(int chocolateID)
+            public ChocolateTypeInfo MakeChocolate(string chocolateNAME)
             {
 
                 //ověření že typ čokošky existuje
-                if (!ChocolateTypes.ContainsKey(chocolateID))
+                if (!ChocolateTypes.ContainsKey(chocolateNAME))
                 {
                     Console.WriteLine("Neplatný název čokolády.");
                     return null;
                 }
-                var chocolateType = ChocolateTypes[chocolateID];
+                else
+                {
+                    ChocolateTypeInfo chocolateType = ChocolateTypes[chocolateNAME];
+
+                    CheckIngredients(chocolateType);
+
+                }
+
+                    
+
 
 
                 return null;
             }
-            private bool CheckIngredients()
+            private bool CheckIngredients(ChocolateTypeInfo ing)
             {
-                return true; //test
+
+                // Zkontrolujeme CocoaBeans
+                if (!Ingredients.ContainsKey(ing.CocoaBeans.Name) || Ingredients["CocoaBeans"].amount < ing.CocoaBeans)
+                    return false;
+
+                // Zkontrolujeme Sugar
+                if (!Ingredients.ContainsKey("Sugar") || Ingredients["Sugar"].amount < ing.Sugar)
+                    return false;
+
+                // Zkontrolujeme Milk
+                if (!Ingredients.ContainsKey("Milk") || Ingredients["Milk"].amount < ing.Milk)
+                    return false;
+
+                // Zkontrolujeme Vanilla
+                if (!Ingredients.ContainsKey("Vanilla") || Ingredients["Vanilla"].amount < ing.Vanilla)
+                    return false;
+
+                return true; // všechny podmínky splněné, můžeme vyrobit
+               
             }
 
             //public int RestockIngredient(string IngredientName, int Amount)
@@ -117,6 +152,7 @@ namespace KaplanChocolateFactory
                 this.producedAmount = producedAmount;
             }
         }
+
         class DatabaseManager
         {
 
@@ -127,94 +163,80 @@ namespace KaplanChocolateFactory
             public DatabaseManager()
             {
                 string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string relativePath = "data\\VyrobnaCokolady.db";
+                string relativePath = "data\\chocolateDB.db";
                 string filePath = Path.Combine(baseDirectory, relativePath);
 
                 connPath = $"Data Source={filePath}";
             }
-            
-            public Dictionary<int, ChocolateIngredientsInfo> LoadIngredients()
+
+            //INGREDIENCE LOUDOVANI
+            public Dictionary<string, ChocolateIngredientsInfo> LoadIngredients()
             {
-                
                 using (conn = new SQLiteConnection(connPath))
                 {
                     conn.Open();
 
-                    
                     SQLiteCommand cmdSelect = conn.CreateCommand();
                     cmdSelect.CommandText = "SELECT * FROM Ingredients;";
 
-                    // vytvori dictionary kde key je ID čokolády a hodnotou je objekt s informacemi o cokolade
-                    Dictionary<int, ChocolateIngredientsInfo> _ChocolateIngredient = new Dictionary<int, ChocolateIngredientsInfo>();
+                    // key už neni int ale string === jméno ingredience
+                    Dictionary<string, ChocolateIngredientsInfo> _ChocolateIngredient = new Dictionary<string, ChocolateIngredientsInfo>();
 
                     using (SQLiteDataReader dr = cmdSelect.ExecuteReader())
                     {
-                        
                         while (dr.Read())
                         {
-                            // id == int
-                            int id = Convert.ToInt32(dr["id"]);
-                            //----------------------------------------------------------
-                            var info = new ChocolateIngredientsInfo // novej objekt s informacema o cokolade
+                            var info = new ChocolateIngredientsInfo
                             {
-                                ingredient = dr["ingredient"].ToString(),
                                 amount = Convert.ToInt32(dr["amount"].ToString())
                             };
-                            // prida novej objekt do dictoinary a ma key = id
-                            _ChocolateIngredient[id] = info;
+
+                            // klíč je rovnou ingredient
+                            _ChocolateIngredient[dr["ingredient"].ToString()] = info;
                         }
                         dr.Close();
                     }
-                    // vraci dictionary s informacema o cokoladach
                     return _ChocolateIngredient;
-
                 }
             }
-            public Dictionary<int, ChocolateTypeInfo> LoadChocolateType()
+
+            // LOUDOVANI COKOLADOVYHO TYPU
+            public Dictionary<string, ChocolateTypeInfo> LoadChocolateType()
             {
-                
                 using (conn = new SQLiteConnection(connPath))
                 {
                     conn.Open();
 
-                    
                     SQLiteCommand cmdSelect = conn.CreateCommand();
                     cmdSelect.CommandText = "SELECT * FROM ChocolateType;";
 
-                    // vytvori dictionary kde key je ID čokolády a hodnotou je objekt s informacemi o cokolade
-                    Dictionary<int, ChocolateTypeInfo> _ChocolateTypes = new Dictionary<int, ChocolateTypeInfo>();
+                    Dictionary<string, ChocolateTypeInfo> _ChocolateTypes = new Dictionary<string, ChocolateTypeInfo>();
 
                     using (SQLiteDataReader dr = cmdSelect.ExecuteReader())
                     {
-                        
                         while (dr.Read())
                         {
-                            // id == int
-                            int id = Convert.ToInt32(dr["id"]);
-                            //----------------------------------------------------------
-                            var info = new ChocolateTypeInfo // novej objekt s informacema o cokolade
+                            var info = new ChocolateTypeInfo
                             {
-                                Name = dr["name"].ToString(),
-                                CocoaBeans = dr["CocoaBeans"].ToString(),
-                                Sugar = dr["Sugar"].ToString(),
-                                Milk = dr["Milk"].ToString(),
-                                Vanilla = dr["Vanilla"].ToString()
+                                CocoaBeans = Convert.ToInt32(dr["CocoaBeans"]),
+                                Sugar = Convert.ToInt32(dr["Sugar"]),
+                                Milk = Convert.ToInt32(dr["Milk"]),
+                                Vanilla = Convert.ToInt32(dr["Vanilla"])
                             };
-                            // prida novej objekt do dictoinary a ma key = id
-                            _ChocolateTypes[id] = info;
+
+                            // klíčem je rovnou jméno čokolády
+                            _ChocolateTypes[dr["name"].ToString()] = info;
                         }
                         dr.Close();
                     }
-                    // vraci dictionary s informacema o cokoladach
                     return _ChocolateTypes;
-
                 }
             }
         }
+
+
         public class ChocolateIngredientsInfo //tuhle mrdkotridu naplnuje LoadIngredients()
         {
-            
-            public string ingredient { get; set; }
             public int amount { get; set; }
         }
 
@@ -222,12 +244,10 @@ namespace KaplanChocolateFactory
         
         public class ChocolateTypeInfo //tuhle mrdkotridu naplnuje LoadChocolateType()
         {
-
-            public string Name { get; set; }
-            public string CocoaBeans { get; set; }
-            public string Sugar { get; set; }
-            public string Milk { get; set; }
-            public string Vanilla { get; set; }
+            public int CocoaBeans { get; set; }
+            public int Sugar { get; set; }
+            public int Milk { get; set; }
+            public int Vanilla { get; set; }
 
         }
         
